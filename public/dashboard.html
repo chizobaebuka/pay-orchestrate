@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>pay-orchestrate — Live Transactions</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #0b0d12;
+    --panel: #12151c;
+    --border: #262b36;
+    --text: #e6e8eb;
+    --muted: #8b93a3;
+    --accent: #5b8cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 32px;
+  }
+  h1 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0 0 4px;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 13px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ef4444;
+    display: inline-block;
+  }
+  .dot.connected { background: #22c55e; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    font-size: 13px;
+  }
+  thead th {
+    text-align: left;
+    padding: 10px 14px;
+    color: var(--muted);
+    font-weight: 500;
+    border-bottom: 1px solid var(--border);
+    background: #161a22;
+  }
+  tbody td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr.flash { animation: flash 900ms ease-out; }
+  @keyframes flash {
+    from { background: rgba(91, 140, 255, 0.25); }
+    to { background: transparent; }
+  }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
+  .badge {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .badge.pending, .badge.processing { background: #3a3520; color: #eab308; }
+  .badge.succeeded { background: #17331f; color: #4ade80; }
+  .badge.reconciled { background: #12331f; color: #22c55e; }
+  .badge.failed { background: #331717; color: #f87171; }
+  .badge.mismatched { background: #331d0f; color: #fb923c; }
+  .empty {
+    padding: 40px;
+    text-align: center;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+  <h1>Live Transactions</h1>
+  <div class="subtitle"><span id="dot" class="dot"></span><span id="status">connecting…</span></div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Provider</th>
+        <th>Reference</th>
+        <th>Status</th>
+        <th>Amount</th>
+        <th>Customer</th>
+        <th>Updated</th>
+      </tr>
+    </thead>
+    <tbody id="rows">
+      <tr><td colspan="6" class="empty">Waiting for transactions…</td></tr>
+    </tbody>
+  </table>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const rowsEl = document.getElementById("rows");
+    const statusEl = document.getElementById("status");
+    const dotEl = document.getElementById("dot");
+    const transactions = new Map();
+
+    function formatTime(iso) {
+      return new Date(iso).toLocaleTimeString();
+    }
+
+    function render() {
+      const list = Array.from(transactions.values()).sort(
+        (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)
+      );
+
+      if (list.length === 0) {
+        rowsEl.innerHTML = '<tr><td colspan="6" class="empty">Waiting for transactions…</td></tr>';
+        return;
+      }
+
+      rowsEl.innerHTML = list
+        .map(
+          (tx) => `
+        <tr data-id="${tx.id}">
+          <td>${tx.provider}</td>
+          <td class="mono">${tx.providerReference ?? "—"}</td>
+          <td><span class="badge ${tx.status}">${tx.status}</span></td>
+          <td>${Number(tx.amount).toFixed(2)} ${tx.currency}</td>
+          <td>${tx.customerEmail ?? "—"}</td>
+          <td class="mono">${formatTime(tx.updatedAt)}</td>
+        </tr>`
+        )
+        .join("");
+    }
+
+    function upsert(tx, flash) {
+      transactions.set(tx.id, tx);
+      render();
+      if (flash) {
+        const row = rowsEl.querySelector(`tr[data-id="${tx.id}"]`);
+        if (row) {
+          row.classList.add("flash");
+          setTimeout(() => row.classList.remove("flash"), 900);
+        }
+      }
+    }
+
+    fetch("/api/transactions")
+      .then((r) => r.json())
+      .then((initial) => {
+        initial.forEach((tx) => transactions.set(tx.id, tx));
+        render();
+      });
+
+    const socket = io();
+
+    socket.on("connect", () => {
+      statusEl.textContent = "live";
+      dotEl.classList.add("connected");
+    });
+
+    socket.on("disconnect", () => {
+      statusEl.textContent = "disconnected";
+      dotEl.classList.remove("connected");
+    });
+
+    socket.on("transaction:update", (tx) => upsert(tx, true));
+  </script>
+</body>
+</html>

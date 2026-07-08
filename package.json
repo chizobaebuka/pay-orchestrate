@@ -1,0 +1,54 @@
+{
+  "name": "pay-orchestrate",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "jest",
+    "lint": "eslint src",
+    "typeorm": "ts-node ./node_modules/typeorm/cli.js -d src/db/data-source.ts",
+    "migration:generate": "npm run typeorm -- migration:generate",
+    "migration:run": "npm run typeorm -- migration:run"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chizobaebuka/pay-orchestrate.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/chizobaebuka/pay-orchestrate/issues"
+  },
+  "homepage": "https://github.com/chizobaebuka/pay-orchestrate#readme",
+  "dependencies": {
+    "bullmq": "^5.79.3",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "ioredis": "^5.11.1",
+    "pg": "^8.22.0",
+    "reflect-metadata": "^0.2.2",
+    "socket.io": "^4.8.3",
+    "stripe": "^22.3.0",
+    "swagger-ui-express": "^5.0.1",
+    "typeorm": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.1.0",
+    "@types/supertest": "^7.2.0",
+    "@types/swagger-ui-express": "^4.1.8",
+    "eslint": "^10.6.0",
+    "jest": "^30.4.2",
+    "nodemon": "^3.1.14",
+    "supertest": "^7.2.2",
+    "ts-jest": "^29.4.11",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.63.0"
+  }
+}
