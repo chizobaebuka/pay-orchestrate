@@ -54,6 +54,7 @@ router.post("/payments", idempotencyMiddleware, async (req, res) => {
             providerReference: transaction.providerReference,
             status: transaction.status,
             redirectUrl: result.redirectUrl,
+            paymentInstructions: result.paymentInstructions,
         });
     } catch (err) {
         await redisClient.del(`idempotency:${idempotencyKey}`);

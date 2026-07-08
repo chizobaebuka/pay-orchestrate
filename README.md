@@ -2,7 +2,9 @@
 
 [![CI](https://github.com/chizobaebuka/pay-orchestrate/actions/workflows/ci.yml/badge.svg)](https://github.com/chizobaebuka/pay-orchestrate/actions/workflows/ci.yml)
 
-A payment orchestration service that sits between your application and multiple payment processors — currently **Stripe** and **Paystack**, with **Flutterwave** planned — giving you one consistent API regardless of which provider actually processes a given transaction, backed by an idempotency layer, an independent reconciliation pipeline, and a live transaction dashboard.
+**Live:** [pay-orchestrate.onrender.com](https://pay-orchestrate.onrender.com) · [API docs](https://pay-orchestrate.onrender.com/api-docs) · [live dashboard](https://pay-orchestrate.onrender.com/dashboard.html)
+
+A payment orchestration service that sits between your application and multiple payment processors — **Stripe**, **Paystack**, and **Flutterwave** — giving you one consistent API regardless of which provider actually processes a given transaction, backed by an idempotency layer, an independent reconciliation pipeline, and a live transaction dashboard.
 
 ## The problem this solves
 
@@ -96,9 +98,13 @@ interface PaymentProviderAdapter {
 }
 ```
 
-Adding a new provider (Flutterwave is next) means implementing this interface and registering it in [src/providers/registry.ts](src/providers/registry.ts) — no changes needed anywhere else, including the reconciliation worker, which is provider-agnostic.
+Adding a new provider means implementing this interface and registering it in [src/providers/registry.ts](src/providers/registry.ts) — no changes needed anywhere else, including the reconciliation worker, which is provider-agnostic.
 
-Stripe and Paystack differ meaningfully in their payment flow, and the interface accommodates that rather than papering over it: Stripe's PaymentIntent can be confirmed directly from the backend, while Paystack requires redirecting the customer to a hosted checkout page — so `PaymentInitiateResult` carries an optional `redirectUrl` that's only populated when a provider needs it.
+Each provider differs meaningfully in its payment flow, and the interface accommodates that rather than papering over it: Stripe's PaymentIntent can be confirmed directly from the backend; Paystack requires redirecting the customer to a hosted checkout page, so `PaymentInitiateResult` carries an optional `redirectUrl`; Flutterwave's v4 API has no equivalent hosted-checkout link at all — every payment method (card, mobile money, USSD) requires collecting instrument-specific details upfront except **Pay With Bank Transfer**, which needs nothing beyond amount/currency/email but returns bank transfer *instructions* to display rather than a link — so `PaymentInitiateResult` also carries an optional `paymentInstructions` string for exactly this case.
+
+Two details worth knowing if you're reading the Flutterwave adapter specifically:
+- **v4 is OAuth2-based** (`client_id`/`client_secret` → short-lived Bearer token), not a static secret key like Stripe/Paystack — the adapter caches and refreshes the token itself rather than fetching one per request.
+- **Flutterwave v4 uses major currency units directly** (e.g. `2500` means ₦2,500), unlike Stripe/Paystack's smallest-unit convention (`2500` means $25.00) — confirmed against the real sandbox API before writing the adapter, since assuming the same convention across providers would have silently caused a 100x amount error.
 
 ## Edge cases handled
 
@@ -182,6 +188,8 @@ Required environment variables (see `.env.example`):
 | `STRIPE_PUBLISHABLE_KEY` / `STRIPE_SECRET_KEY` | Stripe test-mode keys |
 | `STRIPE_WEBHOOK_SECRET` | From `stripe listen` (see below) |
 | `PAYSTACK_TEST_PUBLIC` / `PAYSTACK_TEST_SECRET` | Paystack test-mode keys |
+| `FW_TEST_CLIENT_ID` / `FW_TEST_CLIENT_SECRET` | Flutterwave v4 OAuth2 client credentials |
+| `FLUTTERWAVE_WEBHOOK_SECRET_HASH` | The secret hash you configure in Flutterwave's dashboard webhook settings |
 | `PORT` | Defaults to 4000 |
 
 ### Testing webhooks locally
@@ -205,6 +213,7 @@ Full interactive docs (OpenAPI 3.0, via Swagger UI) are served by the app itself
 | `GET` | `/api/transactions` | Most recent 20 transactions, newest first |
 | `POST` | `/webhooks/stripe` | Stripe webhook receiver |
 | `POST` | `/webhooks/paystack` | Paystack webhook receiver |
+| `POST` | `/webhooks/flutterwave` | Flutterwave webhook receiver |
 | `GET` | `/dashboard.html` | Live transaction dashboard |
 | `GET` | `/api-docs` | Interactive Swagger UI |
 | `GET` | `/api-docs.json` | Raw OpenAPI 3.0 spec |
@@ -220,7 +229,7 @@ Tests live alongside the code they cover (`*.test.ts` next to the source file) a
 Coverage focuses on behavior that's easy to get subtly wrong, not line count:
 
 - **Idempotency middleware** — new key proceeds, concurrent duplicate gets `409`, completed duplicate returns the original result, key release on every failure path.
-- **Provider adapters** (Stripe, Paystack) — status-mapping tables from each provider's vocabulary to our internal `TransactionStatus`, metadata/amount unit conversion, and webhook signature verification (both a real valid signature and a tampered payload against Paystack's actual HMAC implementation).
+- **Provider adapters** (Stripe, Paystack, Flutterwave) — status-mapping tables from each provider's vocabulary to our internal `TransactionStatus`, metadata/amount unit conversion (including Flutterwave's major-unit convention, deliberately different from Stripe/Paystack's smallest-unit one), and webhook signature verification (both a real valid signature and a tampered payload, against Paystack's and Flutterwave's actual HMAC implementations).
 - **Reconciliation state machine** — this is the part most worth testing, since it's the fraud/bug-catching mechanism: `PENDING → RECONCILED` on a matching confirmed payment, `PENDING → MISMATCHED` on amount or currency disagreement, floating-point tolerance so sub-cent rounding doesn't cause false mismatches, and an unknown `providerReference` being a safe no-op.
 - **HTTP routes** (Supertest) — the full `POST /api/payments` request/response contract including validation and idempotency-key cleanup on every error path, and webhook routes rejecting missing/invalid signatures before ever touching the queue.
 
@@ -246,8 +255,8 @@ A second job optionally triggers a Render deploy hook after a successful `main` 
 - [x] Automated test suite (Jest + Supertest)
 - [~] Docker + docker-compose (files written, **not yet verified with a real build** — see below)
 - [x] CI/CD (GitHub Actions: lint → test → build on every push/PR; optional auto-deploy to Render)
-- [ ] Flutterwave adapter
-- [ ] Production deployment
+- [x] Flutterwave adapter (Pay With Bank Transfer)
+- [x] Production deployment (live on Render)
 
 ## License
 

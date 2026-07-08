@@ -11,6 +11,7 @@ export interface PaymentInitiateResult {
     providerReference: string;
     status: TransactionStatus;
     redirectUrl?: string; // set when the customer must be redirected to complete payment (e.g. Paystack)
+    paymentInstructions?: string; // set when the customer must take an out-of-band action instead (e.g. Flutterwave bank transfer details)
     raw?: unknown;
 }
 

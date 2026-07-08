@@ -11,7 +11,7 @@ export const openApiSpec = {
         version: "1.0.0",
         description: `
 A payment orchestration service that sits between your application and multiple payment
-processors (Stripe, Paystack), giving you one consistent API regardless of which provider
+processors (Stripe, Paystack, Flutterwave), giving you one consistent API regardless of which provider
 actually processes a given transaction.
 
 **Idempotency.** Every \`POST /api/payments\` request requires an \`Idempotency-Key\` header.
@@ -185,12 +185,47 @@ than silently trusted.
                 },
             },
         },
+        "/webhooks/flutterwave": {
+            post: {
+                tags: ["Webhooks"],
+                summary: "Flutterwave webhook receiver",
+                description:
+                    "Not meant to be called directly — Flutterwave calls this with events signed via HMAC-SHA256 over the raw request body (base64-encoded), using a secret hash you configure in the Flutterwave dashboard. Verified with a constant-time comparison. On success, a reconciliation job is enqueued and the response returns immediately.",
+                parameters: [
+                    {
+                        name: "flutterwave-signature",
+                        in: "header",
+                        required: true,
+                        description: "HMAC-SHA256 signature (base64) of the raw request body",
+                        schema: { type: "string" },
+                    },
+                ],
+                requestBody: {
+                    required: true,
+                    content: {
+                        "application/json": {
+                            schema: { type: "object", description: "Raw Flutterwave event payload — shape varies by event type" },
+                        },
+                    },
+                },
+                responses: {
+                    "200": {
+                        description: "Signature verified and reconciliation job enqueued",
+                        content: { "application/json": { schema: { $ref: "#/components/schemas/WebhookAck" } } },
+                    },
+                    "400": {
+                        description: "Missing or invalid `flutterwave-signature` header",
+                        content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } } },
+                    },
+                },
+            },
+        },
     },
     components: {
         schemas: {
             ProviderName: {
                 type: "string",
-                enum: ["stripe", "paystack"],
+                enum: ["stripe", "paystack", "flutterwave"],
                 description: "Which payment processor handled (or should handle) this transaction",
             },
             TransactionStatus: {
@@ -251,7 +286,12 @@ than silently trusted.
                     redirectUrl: {
                         type: "string",
                         nullable: true,
-                        description: "Present for providers that require the customer to complete payment on a hosted page (e.g. Paystack). Absent for providers confirmed directly server-side (e.g. Stripe).",
+                        description: "Present for providers that require the customer to complete payment on a hosted page (e.g. Paystack). Absent for providers confirmed directly server-side (e.g. Stripe) or that return out-of-band instructions instead (e.g. Flutterwave).",
+                    },
+                    paymentInstructions: {
+                        type: "string",
+                        nullable: true,
+                        description: "Present for providers where the customer must complete an out-of-band action instead of a redirect — e.g. Flutterwave's Pay With Bank Transfer flow returns the account number and bank name to transfer to here.",
                     },
                 },
             },

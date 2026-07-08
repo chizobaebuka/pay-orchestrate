@@ -12,6 +12,7 @@ export enum TransactionStatus {
 export enum ProviderName {
     STRIPE = "stripe",
     PAYSTACK = "paystack",
+    FLUTTERWAVE = "flutterwave",
 }
 
 @Entity("transactions")

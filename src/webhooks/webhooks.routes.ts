@@ -2,6 +2,7 @@ import { Router, raw } from "express";
 import { ProviderName } from "../db/entities/transaction";
 import { stripeAdapter } from "../providers/stripe.adapter";
 import { paystackAdapter } from "../providers/paystack.adapter";
+import { flutterwaveAdapter } from "../providers/flutterwave.adapter";
 import { reconciliationQueue } from "../queues/reconciliation.queue";
 
 const router = Router();
@@ -49,6 +50,27 @@ router.post("/paystack", raw({ type: "application/json" }), async (req, res) => 
         res.json({ received: true });
     } catch (err) {
         console.error("Paystack webhook verification failed:", err);
+        res.status(400).json({ error: "Invalid webhook signature" });
+    }
+});
+
+router.post("/flutterwave", raw({ type: "application/json" }), async (req, res) => {
+    const signature = req.header("flutterwave-signature");
+
+    if (!signature) {
+        return res.status(400).json({ error: "Missing flutterwave-signature header" });
+    }
+
+    try {
+        const event = flutterwaveAdapter.handleWebhook(req.body, signature);
+        await reconciliationQueue.add("reconcile", {
+            provider: ProviderName.FLUTTERWAVE,
+            providerReference: event.providerReference,
+            webhookStatus: event.status,
+        });
+        res.json({ received: true });
+    } catch (err) {
+        console.error("Flutterwave webhook verification failed:", err);
         res.status(400).json({ error: "Invalid webhook signature" });
     }
 });
